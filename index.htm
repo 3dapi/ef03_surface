@@ -1,0 +1,511 @@
+<?php
+	include '../base/lc_header.php';
+	include '../base/lc_util.php';
+?>
+
+<!--------------------------- Body Begin ---------------------------------------->
+
+<div class="Section1">
+
+<br>
+<h1>◈서피스효과(Surface Effect)◈</h1>
+<br>모니터에 출력하기 위한 하드웨어의 구성을 살펴보면 버스, 그래픽 프로세서,
+<br>비디오 메모리+ 프레임 버퍼, 비디오 제어기 등으로 구성되어 있습니다. 비디오 제어기는
+<br>프레임버퍼에 저장되어 있는 픽셀정보를 이용하여 화면에 색상을 표현하는데 이러한 픽셀은
+<br>장차 모니터로 출력될 그래픽 프로세서가 처리한 결과물입니다.
+<br>
+<br>OpenGL에서는 프레임 버퍼의 구성이 Front Buffer, Color Buffer, Depth Buffer,
+<br>Stencil Buffer, Accumulation Buffer, Auxiliary Buffer 등으로 구성되어 있는데,
+<br>이 중에서 Direct3D는 전면버퍼와 색상버퍼, 깊이 버퍼, 스텐실 버퍼만 있습니다.
+<br>
+<br>서피스는 Direct Draw 시절부터 사용되어 왔는데 처음에는 픽셀의 집합 정도로만 사용되다가
+<br>3D로 와서 좀 더 확장되어 색상뿐만 아니라 깊이 버퍼와 스텐실 버퍼의 자료를 저장하는
+<br>공간을 가리키기도 합니다. 좁은 의미로 서피스를 픽셀을 저장하는 버퍼 정도로만 여겨도
+<br>됩니다.
+<br>그런데 서피스에 대해서 먼저 이야기를 꺼낸 것은 Direct3D는 후면 버퍼를 구성하고 있는
+<br>색상 버퍼, 깊이 버퍼, 스텐실 버퍼를 Render Target, Z-Buffer, Stencil Buffer로 부르고
+<br>있는데 이 버퍼의 내용을 가져오기 위해서는 서피스를 얻어와야 하기 때문입니다.
+<br>또한 Direct3D Texture에서도 서피스를 가져올 수 있어서 Direct3D는 후면 버퍼의
+<br>Render Target을 Texture의 서피스로 대치가 가능해서 중간 과정을 거치지 않고 직접
+<br>텍스처(그림)에 렌더링이 가능합니다.
+<br>
+<br>또한 텍스처에 렌더링을 하면 이 텍스처를 포함한 폴리곤을 변형해서 화면 왜곡을 연출하거나
+<br>거울의 반사효과와 같은 환경 맵핑과 블러링과 같은 컬러에 대한 이미지 조작을 직접할 수
+<br>있는 Post Effect 등에 두루 사용될 수 있으므로 서피스에 대한 활용을 연마하는 것은
+<br>곧 게임프로그래머의 능력을 향상 시키는 일입니다.
+<br>
+<br>
+<br>
+<br>
+<br>
+<br><h2>1. 텍스처에 렌더링</h2>
+<br>먼저 장면을 텍스처에 렌더링 해봅시다. 장면을 텍스처에 렌더링 하기 위해서 텍스처를
+<br>만들어야 하는데 D3DXCreateTexture() 함수를 통해서 텍스처를 생성합니다. 그런데 이 함수의
+<br>인수 중에 USAGE 부분을 D3DUSAGE_RENDERTARGET로 설정하고, 메모리 풀도 D3DPOOL_DEFAULT
+<br>값으로 설정해야 해야 렌더링의 속도가 올라 갑니다.
+<br>종종 그래픽 카드 중에서 렌더링 타겟에 대한 D3DPOOL_DEFAULT 이 지원이 안되어 있다면
+<br>D3DPOOL_MANAGED 으로 메모리 풀을 설정해야 합니다.
+<br>
+<br>다음으로 이 텍스처에서 GetSurfaceLevel(0,&서피스) 함수를 통해서 서피스 포인터를
+<br>얻어옵니다.
+<br>주의 해야 할 것은 이 함수를 호출하면 내부에서 컴객체의 AddRef() 함수가 호출됩니다.
+<br>따라서 텍스처에서 얻은 이 서피스의 포인터는 사용하고 나서 반드시 Rlease()함수를
+<br>호출해서 카운터가 내려가도록 합니다.
+<br>
+<br>서피스를 얻었으면 이 서피스에 렌더링을 할 차례입니다. 렌더링 하기 전에 디바이스의
+<br>색상 버퍼깊이-스텐실 버퍼를 보존해야 합니다.
+<br>디바이스의 GetRenderTarget() 함수와 GetDepthStencilSurface() 함수를 이용하면 색상버퍼,
+<br>깊이-스텐실 버퍼에 대한 포인터를 얻어 올 수 있습니다. 이 함수들 또한 다 사용하고 나서
+<br>반드시 Release() 함수를 호출해야 합니다.
+<br>
+<br>디바이스의 색상버퍼 교체는 디바이스의 SetRenderTarget(0, 서피스) 함수를 이용해서
+<br>간단하게 Render Target를 텍스처의 서피스로 바꿀 수 있습니다.
+<br>재미있는 것은 텍스처의 서피스로 백 버퍼의 색상 버퍼를 바꾸면 BeginScene() / EndScene()함수를
+<br>호출 않고 렌더링이 가능합니다.
+<br>이것을 순서대로 요약하면 다음과 같습니다.
+<br>
+<br>1. 텍스처를 생성한다.
+<br>
+<pre>
+	m_pDev->CreateTexture(m_iTxW
+				, m_iTxW
+				, 1
+				, D3DUSAGE_RENDERTARGET
+				, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT
+				, &m_pTx
+				, NULL);
+</pre>
+<br>2. 텍스처의 서피스를 가져온다.
+<br>
+<pre>
+	m_pTx->GetSurfaceLevel(0,&m_pSf);
+</pre>
+<br>3. 디바이스의 색상 버퍼와 깊이-스텐실 버퍼의 포인터를 저장한다.
+<br>
+<pre>
+	PDSF	pSfOrgD = NULL;	// Back buffer Depth and stencil
+	PDSF	pSfOrgT = NULL;	// Back buffer target
+	m_pDev->GetRenderTarget(0,&pSfOrgT);
+	m_pDev->GetDepthStencilSurface(&pSfOrgD);
+</pre>
+<br>4. 텍스처의 서피스로 디바이스의 색상버퍼를 교체한다.
+<br>
+<pre>
+	m_pDev->SetRenderTarget(0,m_pSf);
+</pre>
+<br>5. 장면을 그린다.
+<br>
+<pre>
+	m_pDev->Clear( …);
+	// Scene render
+</pre>
+<br>6. 장면을 다 그렸으면 저장된 디바이스의 색상 버퍼와 깊이-스텐실 버퍼를 디바이스에 설정한다.
+<br>
+<pre>
+	m_pDev->SetRenderTarget(0,pSfOrgT);	//렌더 타겟을 원래대로...
+	m_pDev->SetDepthStencilSurface(pSfOrgD);
+	SAFE_RELEASE( pSfOrgT );
+	SAFE_RELEASE( pSfOrgD );
+</pre>
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image001.png" BORDER="0">
+<br>
+<br>
+<br>전체적인 코드는 다음과 같습니다.
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc11_RenderTarget1.zip">Sfc11_RenderTarget1.zip</A>
+<br>
+<br>
+<br>위의 코드를 보면 매 프레임 마다 디바이스의 색상버퍼와 깊이 버퍼를 다음과 같이 가져와서
+<br>텍스처에 장면을 렌더링 하고 있습니다.
+<br>
+<pre>
+	hr = m_pDev->GetRenderTarget(0,&pSfOrgT);
+	hr = m_pDev->GetDepthStencilSurface(&pSfOrgD);
+</pre>
+<br>이렇게 작성하는 것보다 미리 디바이스의 색상 버퍼와 깊이 버퍼를 가져와서 멤버 변수로
+<br>저장을 하고 이 것을 가지고 사용하는 것이 좋습니다. 아니면 LPD3DXRENDERTOSURFACE 객체를
+<br>이용해서 사용하면 좀 더 편리합니다. 이 객체를 생성하는 코드는 다음과 같습니다.
+<br>
+<br>주의 해야 할 것은 LPD3DXRENDERTOSURFACE 객체에 대한 해상도, 가로, 세로의 크기 등은
+<br>대상 텍스처의 정보와 일치해야 렌더링이 올바로 진행됩니다.
+<br>
+<pre>
+	IDirect3DSurface9*	pSrfc=NULL;
+	D3DSURFACE_DESC		dscColor;
+	D3DSURFACE_DESC		dscDepth;
+
+	if(FAILED(m_pDev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pSrfc)))
+		return-1;
+
+	pSrfc->GetDesc( &dscColor);
+	pSrfc->Release();
+
+	if(FAILED(m_pDev->GetDepthStencilSurface(&pSrfc)))
+		return -1;
+
+	pSrfc->GetDesc( &dscDepth);
+	pSrfc->Release();
+
+	D3DXCreateTexture(m_pDev, m_iTxW, m_iTxW
+		, 1, D3DUSAGE_RENDERTARGET, dscColor.Format,  D3DPOOL_DEFAULT, &m_pTx);
+
+	m_pTx->GetSurfaceLevel(0,&m_pTxSf);
+
+	D3DSURFACE_DESC dscTex;
+	m_pTxSf->GetDesc( &dscTex);
+
+	D3DXCreateRenderToSurface(m_pDev
+		, dscTex.Width, dscTex.Height, dscColor.Format, TRUE, dscDepth.Format, &m_pTxRs);
+</pre>
+<br>이 객체를 이용하는 장면 연출에서는 디바이스의 색상버퍼와 깊이 버퍼를 저장하지 않고
+<br>디바이스 객체와 마찬가지로 다음과 같이 LPD3DXRENDERTOSURFACE 객체의 BegineScene() 함수에
+<br>대상 텍스처의 서피스를 넣고 EndScene()함수에서 장면을 연출하면 대상 텍스처에 장면이
+<br>그려지게 됩니다.
+<br>
+<pre>
+	m_pTxRs->BeginScene(m_pTxSf, NULL);
+	m_pDev->Clear( 0L, NULL
+			, D3DCLEAR_TARGET | D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER
+			, 0xFF006699, 1.0f, 0L );
+
+	// Scene render
+	g_pApp->m_pGrid->Render();
+	g_pApp->m_pField->Render();
+	m_pTxRs->EndScene(D3DX_FILTER_NONE);
+</pre>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc11_RenderTarget2.zip">Sfc11_RenderTarget2.zip</A>
+<br>
+<br>
+<br>Special Effect Game programming 의 책에 서피스에 대한 좋은 예제가 있는데 그 중에서
+<br>Feed Back Effect에 대한 연출이 있습니다. 이 책에서 소개한 Feed Back 효과는 카메라를
+<br>거울과 거의 수직으로 바라보게 하는 경우에 발생하는 모습을 표현했는데 텍스처의
+<br>서피스로 색상버퍼를 바꾸어가면서 연출하고 있습니다.
+<br>또 다른 예제 중에 Warp 효과가 있는데 이 예제는 장면을 뒤틀린 폴리곤의 텍스처에
+<br>적용해서 마치 화면이 일그러진 효과를 연출하고 있습니다. 코드가 DirectX 8.0 기반으로
+<br>되어 있는데 9.0으로 변경해 보았습니다.
+<br>이론적인 배경은 위의 책을 참고하기 바랍니다.
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image002.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc12_FeedBack.zip">Sfc12_FeedBack.zip</A>
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image003.png" BORDER="0">
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc13_WarpEffect.zip">Sfc13_WarpEffect.zip</A>
+<br>
+<br>위의 예제에서 주의 깊게 살펴 보아야 할 부분은 텍스처 렌더링에서는 장치의 BeginScene(),
+<br>EndScene() 함수를 호출하지 않고 사용해도 되지만 DX9.0C 스프라이트를 사용하는 경우에는
+<br>반드시 BeginScene()/EndScene() 함수
+<br>사이에서 스프라이트를 사용해야 합니다.
+<br>
+<pre>
+	m_pDev->SetRenderTarget(0, m_pSfSrc);
+	m_pDev->Clear(…);
+
+	m_pDev->BeginScene();
+	…
+	m_pSpt->Begin(D3DXSPRITE_ALPHABLEND);
+	…
+	m_pSpt->Draw(…);
+	…
+	m_pSpt->End();
+	…
+	m_pDev->EndScene();
+</pre>
+<br>
+<br>
+<br>
+<br>
+<br>
+<h2>2. 응용 예제</h2>
+<h3>2.1. Load Surface From File</h3>
+<br>서피스를 이야기하면서 빼놓지 말아야 할 것이 있는 데 이것은 서피스를 파일에서도 직접
+<br>가져올 수 있습니다. 그 동안 텍스처를 먼저 만들고, 스프라이트나 폴리곤을 이용해서
+<br>이미지를 화면에 출력을 했는데 직접 파일에서 서피스를 로딩하고, 직접 백 버퍼의 서피스에
+<br>렌더링을 해봅시다.
+<br>
+<br>파일의 서피스를 얻기 위한 가장 일반적인 방법은 텍스처를 만든 다음 서피스를 다음과 같이
+<br>얻는 방법입니다.
+<br>
+<pre>
+	D3DXCreateTextureFromFileEx(…, &m_pTx);
+	m_pTx->GetSurfaceLevel( 0, &m_pTxSf);
+</pre>
+<br>만약 디바이스에 직접 적용하는 서피스라면 디바이스의 Off Screen을 이용할 수 있습니다.
+<br>다음과 같이 Off Screen 서피스를 만든 다음 D3DXLoadSurfaceFromFile() 함수를 이용해서
+<br>Off Screen 서피스에 올립니다.
+<br>
+<pre>
+	m_pd3dDevice->CreateOffscreenPlainSurface(
+			1024, 768, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &m_pOffScreen, 0);
+	D3DXLoadSurfaceFromFile(m_pOffScreen, 0, 0, "Texture/Snow.jpg"
+			, 0, D3DX_DEFAULT, 0, 0);
+</pre>
+<br>이렇게 만든 서피스는 디바이스에 D3DXLoadSurfaceFromFile() 함수를 이용하거나 아니면
+<br>디바이스의 멤버 함수인 StretchRect() 함수를 이용해서 렌더링을 합니다.
+<br>
+<pre>
+	LPDIRECT3DSURFACE9	pSf = NULL;
+	…
+	m_pd3dDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pSf);
+	D3DXLoadSurfaceFromSurface(pSf, 0, &rtT, m_pTxSf, 0, &rtS, D3DX_FILTER_NONE, 0);
+	…
+	m_pd3dDevice->StretchRect(m_pOffScreen, &rtS, pSf, &rtT, D3DTEXF_NONE);
+	pSf->Release();
+</pre>
+<br>이렇게 서피스를 이용해서 직접 백 버퍼에 복사할 수 있는데 이 방법들은 거의 사용하지
+<br>않는데 이유는 속도가 나지 않습니다.
+<br>혹시라도 이 방법을 사용하려고 하는 분들이 있다면 말려 주시기 바랍니다.
+<br>다음 예제는 이러한 두 가지 방법에 대한 코드입니다.
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc21_LoadSurface.zip">Sfc21_LoadSurface.zip</A>
+<br>
+<br>
+<br>
+<br><H3>2.2. Accumulation 버퍼</H3>
+<br>포스트 이펙트(Post Effect)의 가장 간단한 예로 누적 버퍼를 활용한 블러 효과가 있습니다.
+<br>Direct3D는 안타깝게도 누적버퍼라는 개념이 없습니다. 하지만 텍스처로 렌더링이 가능하기
+<br>때문에 몇 가지 과정을 거치면 텍스처를 누적 버퍼로 대치할 수 있습니다. 쉽게 생각한다면
+<br>앞서 보여준 예제들은 일종의 누적버퍼와 같은 의미로 사용된 텍스처들이라 볼 수 있습니다.
+<br>대신 누적 버퍼는 프로그램에서 지정한 화면해상도와 같다는 것과 장면 연출을 위한 텍스처를
+<br>다시 누적 버퍼에 그리는 것만 다를 뿐입니다.
+<br>누적 버퍼를 사용하는 순서를 요약하면 다음과 같습니다.
+<br>
+<pre>
+	1. 알파가 있는 화면 텍스처를 생성한다.
+	   D3DXCreateTexture(…, D3DFMT_A8R8G8B8, …);
+
+	2. 누적버퍼용 텍스처(Accumulate texture) 를 생성한다. 이 때 텍스처는 알파가 없는 형식을 따른다.
+	   D3DXCreateTexture(…, D3DFMT_X8R8G8B8, …);
+
+	3. 화면 연출용 텍스처에 장면을 먼저 렌더링한다. 그리고 알파 값을 설정해서 누적 텍스처를 그린다.
+
+	4. 누적버퍼에 화면 연출용 텍스처를 그린다.
+</pre>
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image006.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc22_Accumulation.zip">Sfc22_Accumulation.zip</A>
+<br>
+<br>
+<br>
+<br>
+<br>
+<H3>2.3. 환경 매핑</H3>
+<br>화면을 텍스처에 렌더링 할 수 있는 기술 덕분에 거울과 같은 효과를 연출할 수 있습니다.
+<br>거울 효과와 같은 기술을 환경 맵핑이라 부르는데 이것은 장면을 상, 하, 좌, 우, 앞, 뒷면을
+<br>차례로 텍스처에 렌더링 해서 마치 텍스처를 정육면체 박스에 붙어 있는 텍스처를 만들어
+<br>각각 UV를 설정해서 출력하는 것입니다.
+<br>
+<br>환경 매핑의 텍스처를 만드는 방법은 6 방향의 텍스처를 만드는 큐브(Cube) 맵과 물고기 눈과
+<br>같은 어안 렌즈처럼 구성된 스페어(Sphere) 맵 두가지 2가지 방법이 있습니다.
+<br>DirectX 9.0은 ID3DXRenderToEnvMap 통해서 간단하게 큐브 맵과 스페어 맵을 만들 수 있습니다.
+<br>다음의 예제는 환경 매핑에 대한 예제입니다.
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image007.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc23_Environment.zip">Sfc23_Environment.zip</A>
+<br>
+<br>
+<br>
+<br>
+<br>
+<H3>2.4. Soft Screen Rendering</H3>
+<br>화면을 조금 부드럽게(흐리게) 출력하기 위해서 픽셀을 조작해야 하므로 쉐이더를 이용합니다.
+<br>이것을 서피스를 이용해서 흉내를 내보겠습니다. 이것은 해상도가 다른 텍스처를 겹쳐서
+<br>렌더링 하면 어느 정도 부드러운 화면을 연출할 수 있는데 다음 예제는 장면을 해상도를
+<br>조금씩(1/2씩) 낮추어서 렌더링 한 후 이 텍스처를 겹쳐서 출력하는 예제입니다.
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image008.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc24_SoftScreen.zip">Sfc24_SoftScreen.zip</A>
+<br>
+<br>
+<br>
+<br>
+<br>
+<H3>2.5. Z-buffer를 활용한 Blur 효과</H3>
+<br>보통 매번 color buffer 와 Z buffer를 Clear한다. 하지만 Color buffer를 clear 하지 않고
+<br>Z-buffer만 Clear하면 Motion Blur효과를 연출할 수 있습니다. 방법은 두 개의 Texture의
+<br>서피스에 한 번은 색상버퍼만 Update하고 이 텍스처를 Z-buffer만 clear 하는 텍스처에
+<br>다시 렌더링 하는 것입니다.
+<br>다음 예제는 z-buffer만 clear해서 Motion blur효과를 연출하는 예제입니다.
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image009.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc25_ZBufferClear.zip">Sfc25_ZBufferClear.zip</A>
+<br>
+<br>
+<br>
+<br>
+<br>
+<H3>2.6. 반투명 유리효과</H3>
+<br>위의 Blur효과를 조금 응용하면 반투명 유리를 만들어 낼 수 있습니다. 빛이 4각형으로 굴절
+<br>된다고 가정하고 가로 세로로 Alpha값을 달리해서 렌더링 하면 반 투명 유리 효과를
+<br>만들어 낼 수 있습니다.
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image010.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc26_Transparent Glass.zip">Sfc26_Transparent Glass.zip</A>
+<br>
+<br>
+<br>
+<br>
+<br>
+<H3>2.7. 흐림 필터</H3>
+<br>지금까지의 코드는 고정 파이프 라인을 통해서 만든 예제 입니다. 고정 파이프라인의
+<br>사용은 그래픽 카드에 비교적 덜 의존하지만 표현력의 한계는 분명합니다. 쉐이더를 사용하면
+<br>극적인 효과를 기대할 수 있습니다. 이미지 서피스에 렌더링 한 픽셀을 픽셀 쉐이더에 적용해
+<br>봅시다.
+<br>앞서 보여주었던 반투명 유리효과를 64Box 흐림 필터 예제로 변경해 봅시다.
+<br>
+<br>
+<br><IMG src="https://github.com/3dapi/ef03_surface/raw/master/img_src/image011.png" BORDER="0">
+<br>
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc27_ShaderBlur.zip">Sfc27_ShaderBlur.zip</A>
+<br>
+<br>
+<br>지금까지 서피스에 대한 부분을 살펴 보았습니다. 이후 서피스를 이용한 포스트 이펙트는
+<br>서 다루겠습니다.
+<br>
+<br>
+<br>
+<br>
+<br>
+<H3>2.8. Render Target class</H3>
+지금까지 텍스처에 장면을 그리는 방법과 게임에서 사용할 만한 테크닉을 연습해 보았습니다.
+<br>“구슬이 서 말이어도 꿰어야 보배”라는 말이 있듯이 위의 코드들을 클래스로 만들어
+<br>놓으면 활용도가 매우 높아 집니다.
+<br>클래스 구조는 객체의 인터페이스로 사용할 추상 클래스(IrenderTarget)를 만들고 이
+<br>클래스를 상속받는 구현 클래스(CrenderTarget)로 구성합니다. 또한 IrenderTarget 객체의
+<br>인스턴스는 전역 함수인 LcDev_CreateRenderTarget() 함수로 생성하도록 작성해 봅시다.
+<br>
+<br>먼저 추상클래스에 대한 코드는 다음과 같이 작성합니다.
+<br>
+<pre>
+	struct IrenderTarget
+	{
+		virtual ~IrenderTarget();
+
+		virtual	INT Create(void* = NULL, void* = NULL, void* = NULL, void* = NULL)=0;
+		virtual	void	Destroy()=0;
+
+		virtual	INT	OnResetDevice()=0;
+		virtual	INT	OnLostDevice()=0;
+
+		virtual	INT	BeginScene(DWORD = (0x1L|0x2L|0x4L), DWORD = 0xFF006699)=0;
+		virtual	INT	EndScene()=0;
+
+		virtual	INT	GetWidth()=0;		// Get Image Width
+		virtual	INT	GetHeight()=0;		// Get Image Height
+		virtual	DWORD	GetDepth()=0;		// Get Image Depth
+
+		virtual	void*	GetTexture() const=0;	// Return Texture pointer
+		virtual	void*	GetSurface() const=0;	// Retrurn Surface pointer in Texture.
+	};
+</pre>
+<br>Render Target의 구체적인 구현 클래스인 CrenderTarget 클래스의 맴번 변수들은 다음과
+<br>같이 구성 합니다.
+<br>
+<pre>
+	class CrenderTarget : public IrenderTarget
+	{
+	protected:
+		LPDIRECT3DDEVICE9	m_pDev	;	// Device
+		INT		m_nType	;	// 0: ID3DXRenderToSurface,
+	// 1: ID3DXRenderToEnvMap(Sphere) 2: CubeMap
+		INT		m_iW	;	// Width
+		INT		m_iH	;	// Height
+		DWORD		m_dD	;	// Depth Format
+
+		LPD3DXRENDERTOSURFACE	m_pRts	;	// Direct3D Render To Target
+
+		LPDIRECT3DTEXTURE9	m_pTxP	;	// Plan or Sphere Map Texture
+		LPDIRECT3DSURFACE9	m_pSfc	;	// Rendering용 텍스처 surface
+		IDirect3DCubeTexture9*	m_pTxC	;	// Cube Map Texture
+</pre>
+<br>멤버 변수 중에 m_nType 변수는 이후 이 클래스가 환경 매핑도 가능하도록 하기 위해 구분을
+<br>위한 변수 입니다.
+<br>IrenderTarget 객체의 인스턴스 생성 함수는 다음과 같이 작성합니다.
+<br>
+<pre>
+	INT LcD3D_CreateRenderTarget(char* sCmd, IrenderTarget** pData
+	, void* pDevice
+	, INT iWidth
+	, INT iHeight)
+	{
+		*pData = NULL;
+		CrenderTarget*	p = new CrenderTarget;
+		INT	nType = 0;
+
+		if(sCmd && 0 == _stricmp("Sphere", sCmd))
+			nType	= 1;
+
+		if(sCmd && 0 == _stricmp("Cube", sCmd))
+			nType	= 2;
+
+		if(FAILED(p->Create(pDevice, (void*)iWidth, (void*)iHeight, (void*)nType)))
+		{
+			delete p;
+			return -1;
+		}
+
+		*pData = p;
+		return 0;
+	}
+</pre>
+<br>LcD3D_CreateRenderTarget() 함수에서 커맨드 부분인 sCmd 변수에 평면 텍스처,
+<br>구(Sphere) 환경매핑, 입방체(Cube) 환경 매핑을 구분할 수 있도록 문자열로 입력을 합니다.
+<br>
+<br>다음은 IrenderTarget 인스턴스 생성 예입니다.
+<br>
+<pre>
+	if(FAILED(LcD3D_CreateRenderTarget("Plan", &m_pRtc1, m_pd3dDevice)))
+		return -1;
+</pre>
+<br>텍스처에 렌더링을 적용하는 코드는 다음과 같이 작성합니다.
+<br>
+<pre>
+	// Texture에 렌더링
+	m_pRtc1->BeginScene(D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER, 0);
+		…
+		m_pTerrain->Render( m_pd3dDevice );
+		…
+	m_pRtc1->EndScene();
+</pre>
+<br>만약 클리어가 필요 없다면 0xFFFFFFFF 값을 m_pRtc1->BeginScene(0xFFFFFFFF, 0)과 같이
+<br>클리어 모드에 입력합니다.
+<br>
+<br>Render Target의 텍스처는 GetTexture() 함수를 이용하고 이 함수는 void 포인터를 전달하므로
+<br>텍스처 포이터로 캐스팅 해서 사용합니다.
+<br>
+<pre>
+	pTx = (LPDIRECT3DTEXTURE9)m_pRtc1->GetTexture();
+</pre>
+<br>전체 코드는 다음을 참고 하기 바랍니다.
+<br>
+<br><A href="https://github.com/3dapi/ef03_surface/raw/master/Sfc28_IrenderTarget1.zip">Sfc28_IrenderTarget1.zip</A>
+<br>
+<br>
+
+</div>
+
+<?php
+	include '../base/lc_tail.php';
+?>
